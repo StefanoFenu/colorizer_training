@@ -23,7 +23,9 @@ def res_net(x, y, activation=tf.nn.relu):
     blocks = [BottleneckBlock(3, 128, 32),
     BottleneckBlock(3, 256, 64),
     BottleneckBlock(3, 512, 128),
-    BottleneckBlock(3, 1024, 256)]
+    BottleneckBlock(3, 1024, 256),
+    BottleneckBlock(3, 2048, 512),
+    BottleneckBlock(3, 4096, 1024)]
 
     input_shape = x.get_shape().as_list()
 
@@ -101,10 +103,32 @@ def res_net(x, y, activation=tf.nn.relu):
 
     net_shape = net.get_shape().as_list()
     net = tf.reshape(net, [-1, net_shape[1] * net_shape[2] * net_shape[3]])
-    foo = skflow.models.logistic_regression(net, y)
+    
+    with tf.variable_scope('logistic_regression'):
+        tf.histogram_summary('logistic_regression.X', net)
+        tf.histogram_summary('logistic_regression.y', y)
 
+        weights = tf.get_variable('weights', [net.get_shape()[1],
+                                             y.get_shape()[-1]])
+        bias = tf.get_variable('bias', [y.get_shape()[-1]])
 
-    return foo 
+        tf.histogram_summary('logistic_regression.weights', weights)
+        tf.histogram_summary('logistic_regression.bias', bias)
+
+        loss_accumulator = 0
+
+    
+        for i in [0]: #range(y.get_shape()[1]):
+            with tf.op_scope([net, y], 'logistic_regression', 'softmax_classifier'):
+                y_ = y[:,i,:]
+
+                logits = tf.nn.xw_plus_b(net, weights, bias)
+                h = tf.nn.softmax_cross_entropy_with_logits(logits, y_, name='h_raw')
+                loss = tf.reduce_mean(h, name='cross_entropy')
+                predictions = tf.nn.softmax(logits, name=name)
+                loss_accumulator += loss
+
+    return predictions, loss_accumulator
 
 
 if __name__ == '__main__':
@@ -114,7 +138,7 @@ if __name__ == '__main__':
     x_train, y_train, x_test, y_test = load_data()
 
     print 'Initializing classifier'
-
+    #TODO: replace by regressor
     classifier = skflow.TensorFlowEstimator(
     model_fn=res_net, n_classes=256*3, batch_size=128, verbose=1,
     steps=100, learning_rate=0.001, continue_training=True)
